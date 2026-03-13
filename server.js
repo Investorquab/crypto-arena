@@ -50,22 +50,35 @@ let btcPrice    = 0;
 let priceHistory = []; // last 60 data points for chart
 
 async function fetchBTC() {
-  try {
-    const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
-    const d = await r.json();
-    btcPrice = parseFloat(d.price);
-    priceHistory.push({ price: btcPrice, time: Date.now() });
-    if (priceHistory.length > 60) priceHistory.shift();
-  } catch(e) {
-    // fallback to CoinGecko
-    try {
+  const sources = [
+    async () => {
       const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
       const d = await r.json();
-      btcPrice = d.bitcoin.usd;
-      priceHistory.push({ price: btcPrice, time: Date.now() });
-      if (priceHistory.length > 60) priceHistory.shift();
-    } catch(e2) {}
+      return d.bitcoin.usd;
+    },
+    async () => {
+      const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+      const d = await r.json();
+      return parseFloat(d.price);
+    },
+    async () => {
+      const r = await fetch('https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=USD');
+      const d = await r.json();
+      return d.USD;
+    },
+  ];
+  for (const src of sources) {
+    try {
+      const price = await src();
+      if (price && !isNaN(price) && price > 0) {
+        btcPrice = price;
+        priceHistory.push({ price: btcPrice, time: Date.now() });
+        if (priceHistory.length > 60) priceHistory.shift();
+        return;
+      }
+    } catch(e) {}
   }
+  console.log('⚠️ All price sources failed');
 }
 
 await fetchBTC();
